@@ -5,24 +5,30 @@ document.addEventListener("DOMContentLoaded", () => {
   const messageDiv = document.getElementById("message");
 
   // Function to fetch activities from API
-  async function fetchActivities() {
+  async function fetchActivities(highlightActivity = null) {
     try {
       const response = await fetch("/activities");
       const activities = await response.json();
 
-      // Clear loading message
+      // Clear loading message and dropdown options
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
+        
+        // Apply highlight if this is the activity that was just modified
+        if (highlightActivity === name) {
+          activityCard.classList.add("highlight-change");
+        }
 
         const spotsLeft = details.max_participants - details.participants.length;
 
         // Create participants list
         const participantsList = details.participants
-          .map((participant) => `<li>${participant}</li>`)
+          .map((participant) => `<li><span>${participant}</span><span class="delete-participant" data-activity="${name}" data-email="${participant}">✖</span></li>`)
           .join("");
 
         activityCard.innerHTML = `
@@ -32,7 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
           <div class="participants-section">
             <strong>Participants:</strong>
-            <ul>${participantsList || "<li>No participants yet</li>"}</ul>
+            <ul>${participantsList || "<li><span>No participants yet</span></li>"}</ul>
           </div>
         `;
 
@@ -49,6 +55,53 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error fetching activities:", error);
     }
   }
+
+  // Function to handle participant removal
+  async function removeParticipant(activity, email) {
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activity)}/unregister?email=${encodeURIComponent(email)}`,
+        {
+          method: "POST",
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        messageDiv.textContent = result.message;
+        messageDiv.className = "success";
+        fetchActivities(activity); // Refresh activities list and highlight the changed activity
+      } else {
+        messageDiv.textContent = result.detail || "An error occurred";
+        messageDiv.className = "error";
+      }
+
+      messageDiv.classList.remove("hidden");
+
+      // Hide message after 5 seconds
+      setTimeout(() => {
+        messageDiv.classList.add("hidden");
+      }, 5000);
+    } catch (error) {
+      messageDiv.textContent = "Failed to unregister. Please try again.";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      console.error("Error unregistering:", error);
+    }
+  }
+
+  // Handle click on delete icons
+  document.addEventListener("click", function (event) {
+    if (event.target.classList.contains("delete-participant")) {
+      const activity = event.target.dataset.activity;
+      const email = event.target.dataset.email;
+      
+      if (confirm(`¿Estás seguro de que deseas eliminar a ${email} de ${activity}?`)) {
+        removeParticipant(activity, email);
+      }
+    }
+  });
 
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
@@ -70,8 +123,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response.ok) {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
+        fetchActivities(activity); // Refresh activities list and highlight this activity
         signupForm.reset();
-        fetchActivities(); // Refresh activities list
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
